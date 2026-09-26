@@ -1,0 +1,99 @@
+# Base configuration: secure defaults only. Anything convenient-but-unsafe lives in application-dev.yml.
+spring:
+  application:
+    name: irrigaiq-backend
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:irrigaiq}
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
+    hikari:
+      pool-name: irrigaiq-db
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate # Flyway owns the schema; Hibernate only verifies it.
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+          batch_size: 50
+        order_inserts: true
+        order_updates: true
+        default_batch_fetch_size: 50
+  flyway:
+    locations: classpath:db/migration
+  mvc:
+    problemdetails:
+      enabled: true
+  data:
+    web:
+      pageable:
+        max-page-size: 100
+
+server:
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+  error:
+    include-stacktrace: never
+    include-message: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when-authorized
+      roles: ADMIN
+  info:
+    java:
+      enabled: true
+
+logging:
+  pattern:
+    correlation: "[%X{requestId:-}] "
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+irrigaiq:
+  security:
+    registration-enabled: ${REGISTRATION_ENABLED:true}
+    jwt:
+      issuer: ${JWT_ISSUER:irrigaiq}
+      audience: irrigaiq-api
+      access-token-ttl: 15m
+      key-id: ${JWT_KEY_ID:irrigaiq-1}
+      private-key-location: ${JWT_PRIVATE_KEY_LOCATION:}
+      public-key-location: ${JWT_PUBLIC_KEY_LOCATION:}
+      allow-ephemeral-keys: false
+    refresh-token:
+      ttl: 30d
+      reuse-leeway: 10s
+      cookie-name: irrigaiq_rt
+      cookie-path: /api/v1/auth
+      cookie-secure: true
+      cookie-same-site: Strict
+    lockout:
+      max-failed-attempts: 5
+      duration: 15m
+    cors:
+      allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+  weather:
+    # OPEN_METEO (live forecast, falls back to climatology when unreachable) or CLIMATOLOGY (offline).
+    provider: ${WEATHER_PROVIDER:OPEN_METEO}
+    base-url: ${WEATHER_BASE_URL:https://api.open-meteo.com}
+    refresh-interval: 3h
+  alerts:
+    evaluation-interval: PT15M
+  bootstrap-admin:
+    email: ${BOOTSTRAP_ADMIN_EMAIL:}
+    password: ${BOOTSTRAP_ADMIN_PASSWORD:}
+    full-name: ${BOOTSTRAP_ADMIN_NAME:Platform Administrator}

@@ -1,0 +1,27 @@
+# Build
+target/
+!.mvn/wrapper/maven-wrapper.jar
+build/
+out/
+
+# Local configuration & secrets
+.env
+.env.*
+!.env.example
+secrets/
+*.pem
+*.key
+
+# IDEs (shared run configurations live in .run/)
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.classpath
+.project
+.settings/
+
+# OS / logs
+.DS_Store
+*.log

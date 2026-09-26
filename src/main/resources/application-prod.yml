@@ -1,0 +1,8 @@
+# Shared/production environments. Secrets arrive via environment variables or mounted files.
+server:
+  forward-headers-strategy: native # trust X-Forwarded-* from the reverse proxy for client IPs
+
+logging:
+  structured:
+    format:
+      console: ecs

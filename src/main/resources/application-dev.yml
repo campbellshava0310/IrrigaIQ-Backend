@@ -1,0 +1,30 @@
+# Local development profile. Activated by `./mvnw spring-boot:run`, the shared IntelliJ run
+# configuration in .run/, and the `app` profile of compose.yaml. Never enable in shared environments.
+spring:
+  config:
+    import: optional:file:.env[.properties]
+  datasource:
+    username: ${POSTGRES_USER:irrigaiq}
+    password: ${POSTGRES_PASSWORD:irrigaiq_dev_password}
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+
+logging:
+  level:
+    com.irrigaiq: DEBUG
+
+irrigaiq:
+  security:
+    jwt:
+      allow-ephemeral-keys: true
+    refresh-token:
+      cookie-secure: false # http://localhost; production always uses Secure cookies
+    cors:
+      allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:8081}
+  bootstrap-admin:
+    email: ${BOOTSTRAP_ADMIN_EMAIL:admin@irrigaiq.local}
+    password: ${BOOTSTRAP_ADMIN_PASSWORD:IrrigaIQ-Admin-2026!}

@@ -1,0 +1,65 @@
+# Local platform services for IrrigaIQ.
+#
+#   docker compose up -d                 # PostgreSQL only (run the API from your IDE / ./mvnw)
+#   docker compose --profile app up -d   # PostgreSQL + the API in a container
+#
+# Values come from .env (copy .env.example). Data persists in the `postgres-data` volume;
+# `docker compose down -v` wipes it.
+name: irrigaiq
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: irrigaiq-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-irrigaiq}
+      POSTGRES_USER: ${POSTGRES_USER:-irrigaiq}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (see .env.example)}
+      TZ: UTC
+      PGTZ: UTC
+    ports:
+      # Loopback only: the database is never reachable from the LAN.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # PostgreSQL 18+ images keep versioned data under /var/lib/postgresql.
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  backend:
+    profiles: ["app"]
+    build:
+      context: .
+    image: irrigaiq/backend:local
+    container_name: irrigaiq-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-irrigaiq}
+      POSTGRES_USER: ${POSTGRES_USER:-irrigaiq}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173,http://localhost:8081}
+    ports:
+      # All interfaces so phones on the same Wi-Fi can reach the API during development.
+      - "${SERVER_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+volumes:
+  postgres-data:
