@@ -106,7 +106,7 @@ All endpoints are under `/api/v1` and require `Authorization: Bearer <access tok
 | `GET /admin/audit-events` | Admin: audit search (action, outcome, actor, target, time range) |
 | `GET /admin/overview` | Admin: platform counters |
 | `POST /admin/demo-farm` | Admin: create the demo farm (optionally for another user) |
-| `GET /farms/{id}/dashboard`, `GET /farms/{id}/briefing` | Today's tasks and KPIs; the plain-language briefing |
+| `GET /farms/{id}/dashboard`, `GET /farms/{id}/briefing` | Today's tasks and KPIs (each water KPI with its previous-period value, and the last 30 days for trend lines); the plain-language briefing |
 | `GET /farms/{id}/weather` | Recent and forecast weather for the farm (live or climatology, flagged) |
 | `GET /farms/{id}/irrigation/status` | Water balance and recommendation for every field |
 | `GET /farms/{id}/fields/{fieldId}/water-balance` | Daily balance, season stats and yield at risk for one field |
@@ -119,7 +119,7 @@ All endpoints are under `/api/v1` and require `Authorization: Bearer <access tok
 | `GET/POST …/assets/{assetId}/condition-checks` | Inspections: condition, flow, power, pressure, ΔP, water level, vibration, leaks |
 | `GET/POST /farms/{id}/work-orders`, `PUT …/{woId}`, `POST …/{woId}/start` \| `complete` \| `cancel` \| `reopen` | Maintenance work orders |
 | `GET /farms/{id}/alerts`, `POST …/evaluate`, `POST …/{alertId}/acknowledge` \| `resolve` \| `work-order` | Alerts |
-| `GET /farms/{id}/water/summary?from&to` | Water accounting (defaults to the last 30 days) |
+| `GET /farms/{id}/water/summary?from&to` | Water accounting (defaults to the last 30 days), with `previous`: the same totals for the preceding period of equal length (null beyond the 180-day simulated history) |
 
 ## Configuration
 

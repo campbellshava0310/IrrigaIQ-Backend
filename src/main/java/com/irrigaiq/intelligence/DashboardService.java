@@ -77,9 +77,17 @@ public class DashboardService {
 	public record FieldSummary(int total, int planted, Map<WaterStatus, Integer> byStatus, List<FieldTile> items) {
 	}
 
-	public record WaterKpis(double weekAppliedM3, double weekRequirementM3, Double weekAdequacyPct,
-			double monthSavedM3, Double monthSavedPct, double weekEnergyKwh, Double weekEnergyCost, String currency,
-			String baselineDescription) {
+	/**
+	 * Headline water numbers, each with the same figure for the period before it (null when that
+	 * period is outside the simulated history), and the last 30 days for trend lines.
+	 */
+	public record WaterKpis(double weekAppliedM3, Double previousWeekAppliedM3, double weekRequirementM3,
+			Double weekAdequacyPct, double monthSavedM3, Double previousMonthSavedM3, Double monthSavedPct,
+			double weekEnergyKwh, Double previousWeekEnergyKwh, Double weekEnergyCost, String currency,
+			String baselineDescription, List<WaterDay> daily) {
+	}
+
+	public record WaterDay(LocalDate date, double appliedM3, double energyKwh) {
 	}
 
 	public record AssetSummary(int total, Map<RiskLevel, Integer> byRisk, int down, int serviceOverdue,
@@ -182,8 +190,14 @@ public class DashboardService {
 	private static WaterKpis water(FarmSnapshot snapshot) {
 		WaterSummary week = snapshot.week();
 		WaterSummary month = snapshot.month();
-		return new WaterKpis(week.appliedM3(), week.requirementM3(), week.adequacyPct(), month.savedM3(),
-				month.savedPct(), week.energyKwh(), week.energyCost(), week.currency(), month.baselineDescription());
+		var lastWeek = week.previous();
+		var lastMonth = month.previous();
+		return new WaterKpis(week.appliedM3(), (lastWeek != null) ? lastWeek.appliedM3() : null,
+				week.requirementM3(), week.adequacyPct(), month.savedM3(),
+				(lastMonth != null) ? lastMonth.savedM3() : null, month.savedPct(), week.energyKwh(),
+				(lastWeek != null) ? lastWeek.energyKwh() : null, week.energyCost(), week.currency(),
+				month.baselineDescription(),
+				month.daily().stream().map((day) -> new WaterDay(day.date(), day.appliedM3(), day.energyKwh())).toList());
 	}
 
 	private static AssetSummary assets(FarmSnapshot snapshot) {

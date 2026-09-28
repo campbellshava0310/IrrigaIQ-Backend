@@ -16,6 +16,7 @@ import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -162,7 +163,10 @@ class OperationsIT extends IntegrationTest {
 		mvc.perform(bearer(get("/api/v1/farms/" + farmId + "/dashboard"), farmer.accessToken()))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.forecast", hasSize(7)))
-			.andExpect(jsonPath("$.water.currency").value("USD"));
+			.andExpect(jsonPath("$.water.currency").value("USD"))
+			.andExpect(jsonPath("$.water.daily", hasSize(30)))
+			.andExpect(jsonPath("$.water.previousWeekAppliedM3").value(0.0))
+			.andExpect(jsonPath("$.water.previousMonthSavedM3").value(notNullValue()));
 		mvc.perform(bearer(get("/api/v1/farms/" + farmId + "/briefing"), farmer.accessToken()))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.headline").value(notNullValue()))
@@ -171,7 +175,16 @@ class OperationsIT extends IntegrationTest {
 			.param("from", LocalDate.now(HARARE).minusDays(29).toString())
 			.param("to", LocalDate.now(HARARE).toString()), farmer.accessToken()))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.daily", hasSize(30)));
+			.andExpect(jsonPath("$.daily", hasSize(30)))
+			.andExpect(jsonPath("$.daily[0].energyKwh").value(0.0))
+			.andExpect(jsonPath("$.previous.to").value(LocalDate.now(HARARE).minusDays(30).toString()))
+			.andExpect(jsonPath("$.previous.from").value(LocalDate.now(HARARE).minusDays(59).toString()));
+		// Six months back has nothing simulated to compare with.
+		mvc.perform(bearer(get("/api/v1/farms/" + farmId + "/water/summary")
+			.param("from", LocalDate.now(HARARE).minusDays(179).toString())
+			.param("to", LocalDate.now(HARARE).toString()), farmer.accessToken()))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.previous").value(nullValue()));
 		mvc.perform(bearer(get("/api/v1/farms/" + farmId + "/weather"), farmer.accessToken()))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.days", hasSize(14)))
@@ -199,7 +212,8 @@ class OperationsIT extends IntegrationTest {
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.fields.total").value(4))
 			.andExpect(jsonPath("$.tasks", not(hasSize(0))))
-			.andExpect(jsonPath("$.assets.attention", not(hasSize(0))));
+			.andExpect(jsonPath("$.assets.attention", not(hasSize(0))))
+			.andExpect(jsonPath("$.water.previousWeekAppliedM3", greaterThan(0.0)));
 
 		// Other farm managers cannot see it.
 		mvc.perform(bearer(get("/api/v1/farms/" + farmId + "/assets"), farmer.accessToken()))
