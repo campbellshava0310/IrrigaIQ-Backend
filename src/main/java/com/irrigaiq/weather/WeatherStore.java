@@ -41,14 +41,16 @@ class WeatherStore {
 
 	List<Cached> find(UUID farmId, LocalDate from, LocalDate to) {
 		return jdbc.sql("""
-				select day, et0_mm, precipitation_mm, precipitation_probability, temp_max_c, temp_min_c, source, fetched_at
+				select day, et0_mm, precipitation_mm, precipitation_probability, temp_max_c, temp_min_c, wind_max_kmh,
+				       source, fetched_at
 				from weather_daily where farm_id = ? and day between ? and ? order by day
 				""")
 			.params(farmId, from, to)
 			.query((rs, row) -> new Cached(new WeatherDay(rs.getObject("day", LocalDate.class),
 					decimal(rs, "et0_mm"), decimal(rs, "precipitation_mm"),
 					rs.getObject("precipitation_probability", Integer.class), decimal(rs, "temp_max_c"),
-					decimal(rs, "temp_min_c"), WeatherSource.valueOf(rs.getString("source")), false),
+					decimal(rs, "temp_min_c"), decimal(rs, "wind_max_kmh"), WeatherSource.valueOf(rs.getString("source")),
+					false),
 					rs.getTimestamp("fetched_at").toInstant()))
 			.list();
 	}
@@ -79,12 +81,13 @@ class WeatherStore {
 	private void write(UUID farmId, List<WeatherDay> days, Instant fetchedAt) {
 		jdbcTemplate.batchUpdate("""
 				insert into weather_daily (farm_id, day, et0_mm, precipitation_mm, precipitation_probability,
-				                           temp_max_c, temp_min_c, source, fetched_at)
-				values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+				                           temp_max_c, temp_min_c, wind_max_kmh, source, fetched_at)
+				values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				on conflict (farm_id, day) do update set
 				    et0_mm = excluded.et0_mm, precipitation_mm = excluded.precipitation_mm,
 				    precipitation_probability = excluded.precipitation_probability, temp_max_c = excluded.temp_max_c,
-				    temp_min_c = excluded.temp_min_c, source = excluded.source, fetched_at = excluded.fetched_at
+				    temp_min_c = excluded.temp_min_c, wind_max_kmh = excluded.wind_max_kmh, source = excluded.source,
+				    fetched_at = excluded.fetched_at
 				where weather_daily.source = 'CLIMATOLOGY' or excluded.source = 'OPEN_METEO'
 				""", days, 200, (ps, day) -> {
 			ps.setObject(1, farmId);
@@ -99,8 +102,9 @@ class WeatherStore {
 			}
 			setNullable(ps, 6, day.tempMaxC());
 			setNullable(ps, 7, day.tempMinC());
-			ps.setString(8, day.source().name());
-			ps.setTimestamp(9, Timestamp.from(fetchedAt));
+			setNullable(ps, 8, day.windMaxKmh());
+			ps.setString(9, day.source().name());
+			ps.setTimestamp(10, Timestamp.from(fetchedAt));
 		});
 	}
 

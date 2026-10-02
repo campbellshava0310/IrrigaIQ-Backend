@@ -40,12 +40,12 @@ public final class FarmViews {
 
 	public record FieldView(UUID id, UUID farmId, String name, BigDecimal areaHa, SoilType soilType,
 			BigDecimal latitude, BigDecimal longitude, IrrigationMethod irrigationMethod, BigDecimal applicationRateMmH,
-			BigDecimal systemEfficiency, UUID pumpAssetId, Instant createdAt, Instant updatedAt) {
+			BigDecimal systemEfficiency, UUID pumpAssetId, boolean mulched, Instant createdAt, Instant updatedAt) {
 
 		public static FieldView from(Field field) {
 			return new FieldView(field.getId(), field.getFarm().getId(), field.getName(), field.getAreaHa(),
 					field.getSoilType(), field.getLatitude(), field.getLongitude(), field.getIrrigationMethod(),
-					field.getApplicationRateMmH(), field.getSystemEfficiency(), field.getPumpAssetId(),
+					field.getApplicationRateMmH(), field.getSystemEfficiency(), field.getPumpAssetId(), field.isMulched(),
 					field.getCreatedAt(), field.getUpdatedAt());
 		}
 

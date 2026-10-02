@@ -19,7 +19,7 @@ import org.springframework.web.client.RestClient;
 class OpenMeteoWeatherProvider implements WeatherProvider {
 
 	private static final String DAILY = "et0_fao_evapotranspiration,precipitation_sum,precipitation_probability_max,"
-			+ "temperature_2m_max,temperature_2m_min";
+			+ "temperature_2m_max,temperature_2m_min,wind_speed_10m_max";
 
 	private final RestClient client;
 
@@ -51,7 +51,7 @@ class OpenMeteoWeatherProvider implements WeatherProvider {
 		for (int i = 0; i < daily.time().size(); i++) {
 			days.add(new WeatherDay(LocalDate.parse(daily.time().get(i)), at(daily.et0(), i),
 					at(daily.precipitation(), i), at(daily.precipitationProbability(), i), at(daily.tempMax(), i),
-					at(daily.tempMin(), i), WeatherSource.OPEN_METEO, false));
+					at(daily.tempMin(), i), at(daily.windMax(), i), WeatherSource.OPEN_METEO, false));
 		}
 		return days;
 	}
@@ -67,7 +67,8 @@ class OpenMeteoWeatherProvider implements WeatherProvider {
 			@JsonProperty("precipitation_sum") List<Double> precipitation,
 			@JsonProperty("precipitation_probability_max") List<Integer> precipitationProbability,
 			@JsonProperty("temperature_2m_max") List<Double> tempMax,
-			@JsonProperty("temperature_2m_min") List<Double> tempMin) {
+			@JsonProperty("temperature_2m_min") List<Double> tempMin,
+			@JsonProperty("wind_speed_10m_max") List<Double> windMax) {
 	}
 
 }

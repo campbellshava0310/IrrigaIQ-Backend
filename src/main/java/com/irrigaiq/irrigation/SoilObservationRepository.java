@@ -18,4 +18,12 @@ public interface SoilObservationRepository extends JpaRepository<SoilObservation
 
 	List<SoilObservation> findByFieldIdOrderByObservedAtDesc(UUID fieldId, Pageable page);
 
+	@Query("""
+			select o from SoilObservation o
+			where o.field.id = :fieldId and o.method = :method and o.observedAt >= :from and o.observedAt < :to
+			order by o.observedAt desc
+			""")
+	List<SoilObservation> findByFieldAndMethodBetween(UUID fieldId, ObservationMethod method, Instant from,
+			Instant to);
+
 }

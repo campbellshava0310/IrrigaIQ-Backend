@@ -12,6 +12,10 @@ irrigaiq:
   alerts:
     initial-delay: PT1H # tests trigger evaluation explicitly
     evaluation-interval: PT1H
+  ml:
+    enabled: false # the rules and water balance must stand on their own
+  knowledge:
+    index-on-startup: false
   bootstrap-admin:
     email: admin@irrigaiq.test
     password: Test-Admin-Password-1

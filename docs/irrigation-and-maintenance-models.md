@@ -173,3 +173,28 @@ asset is down) in one step.
   Zimbabwe (Makonde); reporting on ZESA load-shedding schedules. These shaped the solar and
   load-shedding pump windows.
 - Commercial references for UX conventions: CropX, WiseConn, Netafim GrowSphere.
+
+## Machine-learning layer
+
+Three models from the IrrigaIQ-ML service sit beside the rules above; they never replace them.
+
+- **Irrigation need** (`/ml/irrigation`) rates each planted field Low, Medium or High from soil
+  moisture, forecast maximum temperature and wind, the last 90 days of rain scaled to a year,
+  growth phase and mulch. Soil moisture comes from a probe reading under 6 hours old, converted
+  through the probe's calibration, or otherwise from the water balance's depletion. Both are put
+  on the model's scale by `agronomy/SoilMoistureScale` (15 % at wilting point, 40 % at field
+  capacity). Agreement with the balance is judged by level: High goes with irrigate-soon,
+  irrigate-now or stress; Low with anything short of irrigate-now; Medium with anything short of
+  stress.
+- **Water anomaly** (`/ml/water-anomalies`) compares each meter's hourly flow over the last six
+  hours with its previous 21 days. It marks hours as scheduled when a logged or planned irrigation
+  on a field the meter supplies overlaps them. Findings raise `WATER_ANOMALY` alerts in hedged
+  wording.
+- **Equipment failure risk** (`/ml/equipment-risk`) scores pumps from 7-day pump-monitor means
+  where a monitor is fitted, and from the latest condition check and service and age records
+  otherwise. Condition-check vibration levels map to ISO 10816-3 zone midpoints: 2.0, 5.8 and
+  9.0 mm/s. A HIGH or CRITICAL risk raises an `ASSET_FAILURE_RISK` alert only when the rules have
+  not already flagged the pump.
+
+Model cards with evaluation and limitations are served at `GET /api/v1/ml/models`.
+

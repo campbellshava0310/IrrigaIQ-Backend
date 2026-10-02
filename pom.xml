@@ -31,6 +31,7 @@
 	<properties>
 		<java.version>17</java.version>
 		<springdoc.version>3.1.1</springdoc.version>
+		<anthropic-java.version>2.34.0</anthropic-java.version>
 	</properties>
 
 	<dependencies>
@@ -57,6 +58,13 @@
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-security-oauth2-resource-server</artifactId>
+		</dependency>
+
+		<!-- Farm assistant: Claude API -->
+		<dependency>
+			<groupId>com.anthropic</groupId>
+			<artifactId>anthropic-java</artifactId>
+			<version>${anthropic-java.version}</version>
 		</dependency>
 
 		<!-- Persistence -->

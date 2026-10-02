@@ -180,8 +180,9 @@ public class IrrigationService {
 
 	// ---- Commands ----
 
+	/** @param mulched whether the soil is mulched; {@code null} leaves it unchanged */
 	public record IrrigationSetup(IrrigationMethod method, BigDecimal applicationRateMmH, BigDecimal efficiency,
-			UUID pumpAssetId) {
+			UUID pumpAssetId, Boolean mulched) {
 	}
 
 	@Transactional
@@ -191,6 +192,9 @@ public class IrrigationService {
 			requirePump(farmId, setup.pumpAssetId());
 		}
 		field.configureIrrigation(setup.method(), setup.applicationRateMmH(), setup.efficiency(), setup.pumpAssetId());
+		if (setup.mulched() != null) {
+			field.setMulched(setup.mulched());
+		}
 		fields.flush();
 		publisher.publishEvent(new FarmDataChanged(farmId));
 		return FieldView.from(field);
@@ -320,6 +324,32 @@ public class IrrigationService {
 	}
 
 	// ---- Module API (farm already authorised) ----
+
+	/**
+	 * Records a soil probe's reading as the field's sensor observation for that day. There is one per
+	 * field and day, holding the latest reading, so a probe reporting every few minutes keeps the water
+	 * balance calibrated without flooding the soil-check history.
+	 * @return whether the field's observation changed
+	 */
+	@Transactional
+	public boolean recordProbeReading(Field field, Instant observedAt, double depletionPct, String notes) {
+		ZoneId zone = field.getFarm().zone();
+		LocalDate day = LocalDate.ofInstant(observedAt, zone);
+		List<SoilObservation> sameDay = observations.findByFieldAndMethodBetween(field.getId(),
+				ObservationMethod.SENSOR, day.atStartOfDay(zone).toInstant(),
+				day.plusDays(1).atStartOfDay(zone).toInstant());
+		if (sameDay.isEmpty()) {
+			observations.save(new SoilObservation(field, observedAt, depletionPct, ObservationMethod.SENSOR, notes,
+					null, clock.instant()));
+			return true;
+		}
+		SoilObservation latest = sameDay.get(0);
+		if (!observedAt.isAfter(latest.getObservedAt())) {
+			return false;
+		}
+		latest.revise(observedAt, depletionPct, notes);
+		return true;
+	}
 
 	@Transactional(readOnly = true)
 	public List<FieldWaterState> evaluate(Farm farm) {

@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -196,11 +197,28 @@ public class AssetService {
 
 		List<AssetHealthSnapshot> snapshots = new ArrayList<>(farmAssets.size());
 		for (Asset asset : farmAssets) {
+			double runHoursPerDay = runHours.getOrDefault(asset.getId(), 0.0) / USAGE_WINDOW_DAYS;
 			Health health = AssetHealthEngine.assess(input(asset, today, recentChecks.getOrDefault(asset.getId(), List.of()),
-					open.getOrDefault(asset.getId(), 0), runHours.getOrDefault(asset.getId(), 0.0) / USAGE_WINDOW_DAYS));
-			snapshots.add(new AssetHealthSnapshot(asset, health));
+					open.getOrDefault(asset.getId(), 0), runHoursPerDay));
+			snapshots.add(new AssetHealthSnapshot(asset, health, runHoursPerDay));
 		}
 		return snapshots;
+	}
+
+	@Transactional(readOnly = true)
+	public List<Asset> assetsOf(UUID farmId) {
+		return assets.findByFarmIdOrderByNameAsc(farmId);
+	}
+
+	@Transactional(readOnly = true)
+	public Optional<Asset> findInFarm(UUID farmId, UUID assetId) {
+		return assets.findByIdAndFarmId(assetId, farmId);
+	}
+
+	/** The most recent condition check of an asset, if any. */
+	@Transactional(readOnly = true)
+	public Optional<AssetConditionCheck> latestCheck(UUID assetId) {
+		return checks.findByAssetIdOrderByCheckedAtDesc(assetId, PageRequest.of(0, 1)).stream().findFirst();
 	}
 
 	/** Loads an asset of the given farm, or 404. */

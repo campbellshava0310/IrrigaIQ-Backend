@@ -65,7 +65,7 @@ public class IrrigationController {
 	public record SetupRequest(IrrigationMethod method,
 			@Positive @DecimalMax("100") @Digits(integer = 3, fraction = 2) BigDecimal applicationRateMmH,
 			@DecimalMin("0.30") @DecimalMax("1.00") @Digits(integer = 1, fraction = 2) BigDecimal efficiency,
-			UUID pumpAssetId) {
+			UUID pumpAssetId, Boolean mulched) {
 	}
 
 	/**
@@ -105,11 +105,12 @@ public class IrrigationController {
 	}
 
 	@PutMapping("/fields/{fieldId}/irrigation-setup")
-	@Operation(summary = "Irrigation system of a field: method, measured rate/efficiency and supplying pump")
+	@Operation(summary = "Irrigation system of a field: method, measured rate/efficiency, supplying pump, mulch")
 	public FieldView configure(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable UUID farmId,
 			@PathVariable UUID fieldId, @Valid @RequestBody SetupRequest body) {
 		return irrigation.configure(farmId, fieldId, user,
-				new IrrigationSetup(body.method(), body.applicationRateMmH(), body.efficiency(), body.pumpAssetId()));
+				new IrrigationSetup(body.method(), body.applicationRateMmH(), body.efficiency(), body.pumpAssetId(),
+						body.mulched()));
 	}
 
 	@GetMapping("/irrigation/events")

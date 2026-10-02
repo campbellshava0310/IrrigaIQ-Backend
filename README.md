@@ -4,8 +4,8 @@ REST API for the IrrigaIQ farm water-intelligence platform. It is the single sys
 the web app ([IrrigaIQ-Web](https://github.com/campbellshava0310/IrrigaIQ-Web)) and the mobile app
 ([IrrigaIQ-MobileApp](https://github.com/campbellshava0310/IrrigaIQ-MobileApp)).
 
-**Stack:** Java 17 · Spring Boot 4.1 · Spring Security 7 (JWT resource server) · PostgreSQL 18 ·
-Flyway · Hibernate 7 · springdoc OpenAPI · Testcontainers
+**Stack:** Java 17 · Spring Boot 4.1 · Spring Security 7 (JWT resource server) · PostgreSQL 18 with
+pgvector · Flyway · Hibernate 7 · springdoc OpenAPI · Testcontainers · Claude API (Java SDK)
 
 ## Quick start
 
@@ -13,9 +13,28 @@ Prerequisites: JDK 17+, Docker.
 
 ```bash
 cp .env.example .env          # local settings shared by Docker Compose and Spring
-docker compose up -d          # PostgreSQL 18 on 127.0.0.1:5432
+docker compose up -d          # PostgreSQL 18 + pgvector on 127.0.0.1:5432
 ./mvnw spring-boot:run        # API on http://localhost:8080 (dev profile)
 ```
+
+Optional AI services (everything else works without them):
+
+- **ML service** (the IrrigaIQ-ML repository, checked out next to this one): irrigation-need model, water
+  anomaly detection, pump failure risk and knowledge embeddings. Run it with
+  `docker compose --profile ml up -d` or from that repo (`.venv/bin/uvicorn irrigaiq_ml.api:app --port 8090`).
+- **Farm assistant**, either fully local or on the Claude API:
+  - *Local (nothing leaves the machine):* `docker compose --profile ai up -d`, then
+    `docker compose exec ollama ollama pull llama3.1:8b` (4.9 GB, once), and set
+    `ASSISTANT_PROVIDER=OLLAMA` in `.env`. On macOS, Docker has no GPU access, so answers take
+    30–90 s on the CPU.
+  - *Claude:* set `ANTHROPIC_API_KEY` in `.env`.
+
+  Without either, the assistant answers 503 with a clear message and the rest of the platform is
+  unaffected.
+
+The summit demo (ESP32 probe at 23 % → irrigation recommended; 500 L/h unscheduled flow → possible
+anomaly; the assistant explaining both) is scripted in [docs/summit-demo.md](docs/summit-demo.md).
+An ESP32 sketch for a soil probe and flow meter is in [docs/esp32](docs/esp32).
 
 | URL | Purpose |
 | --- | --- |
@@ -55,16 +74,26 @@ and `web` adapters; cross-module calls go through services, never through anothe
 | `water` | Water accounting: applied vs crop need, savings vs a calendar schedule, energy and cost, licensed allocations |
 | `intelligence` | The Today dashboard (prioritised tasks) and the plain-language daily briefing |
 | `demo` | Admin-only generator for a realistic demo farm |
+| `telemetry` | Devices (soil probes, water meters, pump monitors) with per-device keys; idempotent ingestion; probe readings recalibrate the water balance; hourly aggregates |
+| `ml` | Client of the ML service (timeouts, circuit breaker) and its three uses: irrigation need per field (with agreement against the water balance), water-meter anomaly checks, pump failure risk |
+| `knowledge` | Curated agronomy and maintenance notes (`src/main/resources/knowledge`), chunked and embedded into pgvector; hybrid semantic + full-text search with sources |
+| `assistant` | The farm assistant: a language model (Claude, or a local Llama through Ollama) with 14 read-only farm tools and the knowledge base, streamed to the client as server-sent events |
 
 How the models work (equations, parameters, thresholds and sources) is documented in
 [docs/irrigation-and-maintenance-models.md](docs/irrigation-and-maintenance-models.md). Every
 recommendation and health score carries a `source`/`modelVersion`, so trained models can replace
 the rules module by module once sensor data exists, without changing the API.
 
+**AI architecture.** The ML service predicts; this API owns the data and the business rules; the
+language model explains and orchestrates. The assistant never computes an irrigation schedule
+itself: it calls tools that return the FAO-56 recommendation, the ML models' outputs, sensor
+readings and weather, and it cites the knowledge base for general guidance. Every ML output says
+whether the model answered (`available`), and every consumer degrades to the rules when it did not;
+ML-raised alerts are left untouched (not auto-resolved) while the model cannot judge.
+
 Modules depend on each other through services, ports (`assets.PumpUsageProvider`,
 `assets.OpenWorkOrderCounter`) and the `FarmDataChanged` event, never through each other's
-tables, so there are no package cycles. The telemetry tables in `V3__telemetry_and_intelligence.sql`
-are reserved for sensor ingestion.
+tables, so there are no package cycles.
 
 Flyway owns the schema (`src/main/resources/db/migration`); Hibernate only validates it
 (`ddl-auto: validate`), so any drift between entities and SQL fails at startup, not in production.
@@ -120,6 +149,13 @@ All endpoints are under `/api/v1` and require `Authorization: Bearer <access tok
 | `GET/POST /farms/{id}/work-orders`, `PUT …/{woId}`, `POST …/{woId}/start` \| `complete` \| `cancel` \| `reopen` | Maintenance work orders |
 | `GET /farms/{id}/alerts`, `POST …/evaluate`, `POST …/{alertId}/acknowledge` \| `resolve` \| `work-order` | Alerts |
 | `GET /farms/{id}/water/summary?from&to` | Water accounting (defaults to the last 30 days), with `previous`: the same totals for the preceding period of equal length (null beyond the 180-day simulated history) |
+| `GET/POST /farms/{id}/devices`, `GET/PUT/DELETE …/devices/{deviceId}` | Devices; registering returns the device key once |
+| `POST …/devices/{deviceId}/rotate-key`, `GET …/devices/{deviceId}/readings?hours` | New key (old one stops at once); hourly readings |
+| `POST /telemetry` | **Device-authenticated** (`X-Device-Key`, no user token): up to 500 readings; retries are idempotent |
+| `GET /farms/{id}/ml/irrigation` \| `water-anomalies` \| `equipment-risk` | ML outputs, each with `available` so clients can fall back |
+| `GET /ml/models` | Model cards (task, evaluation, limitations) |
+| `GET /knowledge/search?q`, `GET /knowledge/status` | Knowledge-base retrieval with sources |
+| `GET /farms/{id}/assistant`, `POST /farms/{id}/assistant/chat` | Assistant availability and suggested questions; ask (answer streams as `text/event-stream`) |
 
 ## Configuration
 
@@ -135,6 +171,14 @@ All endpoints are under `/api/v1` and require `Authorization: Bearer <access tok
 | `BOOTSTRAP_ADMIN_EMAIL` / `_PASSWORD` / `_NAME` | dev defaults | Used only while no admin exists |
 | `WEATHER_PROVIDER` | `OPEN_METEO` | `CLIMATOLOGY` runs fully offline (tests, demos without internet) |
 | `WEATHER_BASE_URL` | `https://api.open-meteo.com` | Point at a self-hosted Open-Meteo or a commercial plan |
+| `IRRIGAIQ_ML_URL` / `IRRIGAIQ_ML_TOKEN` | `http://localhost:8090` / none | ML service and its shared token (set the same token in the ML service) |
+| `IRRIGAIQ_ML_ENABLED` | `true` | `false` runs on rules and the water balance alone |
+| `ASSISTANT_PROVIDER` | `CLAUDE` | `OLLAMA` runs the assistant on a local model (see Quick start) |
+| `OLLAMA_BASE_URL` / `OLLAMA_MODEL` | `http://localhost:11434` / `llama3.1:8b` | Local model server and a tool-capable model |
+| `OLLAMA_CONTEXT_TOKENS` | `12288` | Context window; memory grows with it (about 1 GB per 8k tokens for an 8B model) |
+| `ANTHROPIC_API_KEY` | none | Enables the farm assistant on Claude |
+| `ASSISTANT_MODEL` / `ASSISTANT_EFFORT` | `claude-opus-5` / `medium` | Model and reasoning effort for the assistant |
+| `ANTHROPIC_BASE_URL` | Claude API | Only when routing through an API gateway or proxy |
 
 ## Testing
 
@@ -148,7 +192,11 @@ detection, cookie-based web sessions, lockout, password change, role enforcement
 cross-tenant farm isolation, and the operations flows end to end (a field's recommendation
 responding to irrigation and soil checks; a degrading pump raising an alert that becomes a work
 order whose completion resets the service clock; the dashboard, briefing, water summary and demo
-farm). Unit tests cover the water-balance and asset-health engines and the weather fallback.
+farm), device keys and ingestion (a probe reading recalibrating a field), the ML endpoints
+degrading when the ML service is off, knowledge indexing and pgvector search, and the assistant's
+streamed answers through real tools under a scripted model. Unit tests cover the water-balance and
+asset-health engines, the weather fallback, the soil-moisture scale, tool-input validation and the
+assistant's tool loop (refusals, truncated turns, invalid tool input, the tool budget).
 
 ## Before production
 
@@ -156,6 +204,9 @@ farm). Unit tests cover the water-balance and asset-health engines and the weath
 - Run with `SPRING_PROFILES_ACTIVE=prod` behind a TLS-terminating reverse proxy (structured ECS
   logs, proxy-aware client IPs, Secure cookies, Swagger disabled).
 - Use a dedicated database role for the application and a separate one for migrations.
+- Run the ML service with `IRRIGAIQ_ML_TOKEN` set on both sides, on a private network only.
+- Keep `ANTHROPIC_API_KEY` in a secret manager. The assistant is rate-limited per user
+  (`irrigaiq.assistant.requests-per-hour`) and audited (`ASSISTANT_CHAT`, without message content).
 - Follow-ups on the roadmap: email verification and password reset, MFA for administrators,
-  device credentials for ESP32 ingestion, farm-level membership roles, and generating the client
-  SDKs from the OpenAPI contract.
+  farm-level membership roles, retraining the ML models on real telemetry, and generating the
+  client SDKs from the OpenAPI contract.

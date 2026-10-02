@@ -30,6 +30,10 @@ spring:
     web:
       pageable:
         max-page-size: 100
+  task:
+    scheduling:
+      pool:
+        size: 2 # alert sweeps and debounced telemetry refreshes
 
 server:
   port: ${SERVER_PORT:8080}
@@ -93,6 +97,24 @@ irrigaiq:
     refresh-interval: 3h
   alerts:
     evaluation-interval: PT15M
+  # Python ML service (IrrigaIQ-ML): irrigation need, water anomalies, pump risk, embeddings.
+  # Optional: without it the platform runs on its rules and FAO-56 water balance.
+  ml:
+    enabled: ${IRRIGAIQ_ML_ENABLED:true}
+    base-url: ${IRRIGAIQ_ML_URL:http://localhost:8090}
+    token: ${IRRIGAIQ_ML_TOKEN:}
+  # Farm assistant. CLAUDE (Claude API; disabled with a clear 503 until ANTHROPIC_API_KEY is set)
+  # or OLLAMA (a local model, e.g. Llama 3.1 8B in Docker: nothing leaves the machine).
+  assistant:
+    provider: ${ASSISTANT_PROVIDER:CLAUDE}
+    api-key: ${ANTHROPIC_API_KEY:}
+    base-url: ${ANTHROPIC_BASE_URL:}
+    model: ${ASSISTANT_MODEL:claude-opus-5}
+    effort: ${ASSISTANT_EFFORT:medium}
+    ollama:
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+      model: ${OLLAMA_MODEL:llama3.1:8b}
+      context-tokens: ${OLLAMA_CONTEXT_TOKENS:12288}
   bootstrap-admin:
     email: ${BOOTSTRAP_ADMIN_EMAIL:}
     password: ${BOOTSTRAP_ADMIN_PASSWORD:}

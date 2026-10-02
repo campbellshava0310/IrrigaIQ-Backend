@@ -47,9 +47,9 @@ class WeatherStoreIT extends IntegrationTest {
 		UUID farmId = UUID.fromString(read(farm, "$.id"));
 		LocalDate day = LocalDate.of(2026, 10, 1);
 
-		store.upsert(farmId, List.of(new WeatherDay(day, 5.8, 12.4, 70, 29.5, 16.1, WeatherSource.OPEN_METEO, true)),
+		store.upsert(farmId, List.of(new WeatherDay(day, 5.8, 12.4, 70, 29.5, 16.1, 14.2, WeatherSource.OPEN_METEO, true)),
 				Instant.parse("2026-10-01T04:00:00Z"));
-		store.upsert(farmId, List.of(new WeatherDay(day, 4.0, 0.0, 0, 25.0, 12.0, WeatherSource.CLIMATOLOGY, true)),
+		store.upsert(farmId, List.of(new WeatherDay(day, 4.0, 0.0, 0, 25.0, 12.0, 10.0, WeatherSource.CLIMATOLOGY, true)),
 				Instant.parse("2026-10-01T05:00:00Z"));
 
 		List<WeatherStore.Cached> cached = store.find(farmId, day, day);
@@ -65,7 +65,7 @@ class WeatherStoreIT extends IntegrationTest {
 	@Test
 	void cachingIsSkippedWhileTheCallerIsStillWritingItsFarm() {
 		LocalDate day = LocalDate.of(2026, 10, 2);
-		WeatherDay live = new WeatherDay(day, 6.1, 0.0, 5, 31.0, 15.0, WeatherSource.OPEN_METEO, true);
+		WeatherDay live = new WeatherDay(day, 6.1, 0.0, 5, 31.0, 15.0, 18.4, WeatherSource.OPEN_METEO, true);
 
 		transactions.executeWithoutResult((status) -> {
 			Farm farm = farms.saveAndFlush(new Farm(users.findByEmail(ADMIN_EMAIL).orElseThrow(),

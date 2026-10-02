@@ -76,7 +76,8 @@ public final class AssetViews {
 	}
 
 	/** Asset plus its current health, for other modules (alerts, dashboard, briefing). */
-	public record AssetHealthSnapshot(Asset asset, Health health) {
+	/** @param runHoursPerDay mean daily run-hours over the recent usage window */
+	public record AssetHealthSnapshot(Asset asset, Health health, double runHoursPerDay) {
 	}
 
 }

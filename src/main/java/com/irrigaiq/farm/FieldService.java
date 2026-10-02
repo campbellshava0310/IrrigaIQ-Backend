@@ -2,6 +2,7 @@ package com.irrigaiq.farm;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import com.irrigaiq.common.error.ApiException;
@@ -67,6 +68,18 @@ public class FieldService {
 	public Field requireAccessible(UUID farmId, UUID fieldId, AuthenticatedUser user) {
 		farms.requireAccessible(farmId, user);
 		return fields.findByIdAndFarmId(fieldId, farmId).orElseThrow(() -> ApiException.notFound("Field"));
+	}
+
+	// ---- Module API (callers have already authorised the farm) ----
+
+	@Transactional(readOnly = true)
+	public List<Field> fieldsOf(UUID farmId) {
+		return fields.findByFarmIdOrderByNameAsc(farmId);
+	}
+
+	@Transactional(readOnly = true)
+	public Optional<Field> findInFarm(UUID farmId, UUID fieldId) {
+		return fields.findByIdAndFarmId(fieldId, farmId);
 	}
 
 	private static ApiException duplicateName() {

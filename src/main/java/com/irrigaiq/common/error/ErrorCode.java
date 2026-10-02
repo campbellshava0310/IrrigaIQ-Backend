@@ -17,7 +17,10 @@ public enum ErrorCode {
 	REFRESH_TOKEN_INVALID, REGISTRATION_DISABLED,
 
 	// Identity
-	EMAIL_ALREADY_REGISTERED, CURRENT_PASSWORD_INCORRECT, PASSWORD_REUSE, LAST_ADMIN;
+	EMAIL_ALREADY_REGISTERED, CURRENT_PASSWORD_INCORRECT, PASSWORD_REUSE, LAST_ADMIN,
+
+	// Capacity & optional services
+	TOO_MANY_REQUESTS, SERVICE_UNAVAILABLE;
 
 	public static ErrorCode fromStatus(HttpStatusCode status) {
 		return switch (status.value()) {
@@ -28,6 +31,8 @@ public enum ErrorCode {
 			case 405 -> METHOD_NOT_ALLOWED;
 			case 409 -> CONFLICT;
 			case 415 -> UNSUPPORTED_MEDIA_TYPE;
+			case 429 -> TOO_MANY_REQUESTS;
+			case 503 -> SERVICE_UNAVAILABLE;
 			default -> status.is4xxClientError() ? BAD_REQUEST : INTERNAL_ERROR;
 		};
 	}

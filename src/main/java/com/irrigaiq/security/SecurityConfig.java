@@ -25,7 +25,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 /**
  * Stateless API security. Every request authenticates with a bearer access token except the
- * explicitly public auth, health and documentation endpoints.
+ * explicitly public auth, health and documentation endpoints, and device ingestion (which
+ * authenticates with a per-device key instead).
  *
  * <p>CSRF protection is disabled because browsers cannot attach bearer tokens automatically. The
  * only cookie-authenticated endpoints (refresh/logout) are guarded by a {@code SameSite=Strict},
@@ -55,6 +56,9 @@ public class SecurityConfig {
 						"/api/v1/auth/refresh", "/api/v1/auth/logout")
 				.permitAll()
 				.requestMatchers(HttpMethod.GET, "/.well-known/jwks.json")
+				.permitAll()
+				// Devices authenticate with their own key, checked by the telemetry module.
+				.requestMatchers(HttpMethod.POST, "/api/v1/telemetry")
 				.permitAll()
 				.requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info")
 				.permitAll()

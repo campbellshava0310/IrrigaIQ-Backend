@@ -7,14 +7,18 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Bean;
 
-/** Same PostgreSQL major version as compose.yaml, so migrations are tested against production SQL. */
+/**
+ * Same image as compose.yaml (PostgreSQL 18 with pgvector), so migrations are tested against
+ * production SQL.
+ */
 @TestConfiguration(proxyBeanMethods = false)
 public class PostgresTestcontainer {
 
 	@Bean
 	@ServiceConnection
 	PostgreSQLContainer postgres() {
-		return new PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine"));
+		return new PostgreSQLContainer(
+				DockerImageName.parse("pgvector/pgvector:pg18").asCompatibleSubstituteFor("postgres"));
 	}
 
 }

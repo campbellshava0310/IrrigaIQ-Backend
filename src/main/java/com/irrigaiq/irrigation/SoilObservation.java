@@ -70,6 +70,13 @@ public class SoilObservation {
 		this.createdAt = now;
 	}
 
+	/** A newer reading from the same probe on the same day replaces the older one. */
+	void revise(Instant observedAt, double depletionPct, String notes) {
+		this.observedAt = observedAt;
+		this.depletionPct = BigDecimal.valueOf(depletionPct).setScale(2, RoundingMode.HALF_UP);
+		this.notes = (notes == null || notes.isBlank()) ? null : notes.strip();
+	}
+
 	public UUID getId() {
 		return id;
 	}

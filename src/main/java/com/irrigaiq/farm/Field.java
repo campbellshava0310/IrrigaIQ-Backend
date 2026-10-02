@@ -52,6 +52,10 @@ public class Field extends BaseEntity {
 	@Column(name = "pump_asset_id")
 	private UUID pumpAssetId;
 
+	/** Soil covered by organic or plastic mulch, which cuts evaporation (an input to the irrigation model). */
+	@Column(nullable = false)
+	private boolean mulched;
+
 	protected Field() {
 	}
 
@@ -79,6 +83,14 @@ public class Field extends BaseEntity {
 		this.applicationRateMmH = Decimals.scale(applicationRateMmH, 2);
 		this.systemEfficiency = Decimals.scale(efficiency, 2);
 		this.pumpAssetId = pumpAssetId;
+	}
+
+	public void setMulched(boolean mulched) {
+		this.mulched = mulched;
+	}
+
+	public boolean isMulched() {
+		return mulched;
 	}
 
 	public IrrigationMethod getIrrigationMethod() {

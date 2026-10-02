@@ -135,7 +135,7 @@ public class DemoFarmService {
 		SplittableRandom random = new SplittableRandom(SEED);
 		Instant now = clock.instant();
 
-		Farm farm = farms.save(new Farm(owner, new FarmDetails("Mazowe Valley Estate (demo)",
+		Farm farm = farms.save(new Farm(owner, new FarmDetails("Mazowe Valley Estate",
 				"Mazowe, Mashonaland Central, Zimbabwe", new BigDecimal("64.00"), new BigDecimal("-17.505000"),
 				new BigDecimal("30.975000"), "Africa/Harare", "USD", new BigDecimal("0.1200"), 3,
 				new BigDecimal("25.00"))));

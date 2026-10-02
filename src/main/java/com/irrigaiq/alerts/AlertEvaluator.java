@@ -4,11 +4,15 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import org.slf4j.Logger;
@@ -30,6 +34,17 @@ import com.irrigaiq.farm.Farm;
 import com.irrigaiq.farm.FarmRepository;
 import com.irrigaiq.irrigation.IrrigationService.FieldWaterState;
 import com.irrigaiq.irrigation.IrrigationService;
+import com.irrigaiq.ml.EquipmentRiskService;
+import com.irrigaiq.ml.EquipmentRiskService.PumpRisk;
+import com.irrigaiq.ml.MlApi.Anomaly;
+import com.irrigaiq.ml.MlApi.EquipmentRisk;
+import com.irrigaiq.ml.MlApi.Indicator;
+import com.irrigaiq.ml.WaterAnomalyService;
+import com.irrigaiq.ml.WaterAnomalyService.MeterCheck;
+import com.irrigaiq.telemetry.DeviceService;
+import com.irrigaiq.telemetry.DeviceStatus;
+import com.irrigaiq.telemetry.Sensor;
+import com.irrigaiq.telemetry.SensorType;
 import com.irrigaiq.water.WaterService.SourceAllocation;
 import com.irrigaiq.water.WaterService;
 import com.irrigaiq.weather.WeatherDay;
@@ -54,6 +69,8 @@ public class AlertEvaluator {
 
 	static final double HEAVY_RAIN_MM = 25;
 
+	static final Duration DEVICE_SILENT_AFTER = Duration.ofHours(2);
+
 	/** A person's "resolve" silences the same condition for this long. */
 	static final Duration DISMISS_PERIOD = Duration.ofHours(24);
 
@@ -69,16 +86,26 @@ public class AlertEvaluator {
 
 	private final AlertRepository alerts;
 
+	private final WaterAnomalyService waterAnomalies;
+
+	private final EquipmentRiskService equipmentRisk;
+
+	private final DeviceService devices;
+
 	private final Clock clock;
 
 	public AlertEvaluator(FarmRepository farms, IrrigationService irrigation, AssetService assets, WaterService water,
-			WeatherService weather, AlertRepository alerts, Clock clock) {
+			WeatherService weather, AlertRepository alerts, WaterAnomalyService waterAnomalies,
+			EquipmentRiskService equipmentRisk, DeviceService devices, Clock clock) {
 		this.farms = farms;
 		this.irrigation = irrigation;
 		this.assets = assets;
 		this.water = water;
 		this.weather = weather;
 		this.alerts = alerts;
+		this.waterAnomalies = waterAnomalies;
+		this.equipmentRisk = equipmentRisk;
+		this.devices = devices;
 		this.clock = clock;
 	}
 
@@ -102,6 +129,11 @@ public class AlertEvaluator {
 		weatherCandidates(farm, candidates);
 		assetCandidates(farm, candidates);
 		allocationCandidates(farm, candidates);
+		// Conditions that could not be judged this time (ML offline, meter silent): keep their alerts as they are.
+		Set<String> undetermined = new HashSet<>();
+		waterAnomalyCandidates(farm, candidates, undetermined);
+		failureRiskCandidates(farm, candidates, undetermined);
+		deviceCandidates(farm, candidates);
 
 		Instant now = clock.instant();
 		Map<String, Alert> open = new HashMap<>();
@@ -129,6 +161,7 @@ public class AlertEvaluator {
 			alert.apply(c.type(), c.severity(), c.title(), c.message(), c.fieldId(), c.assetId(), c.details(), now);
 			alerts.save(alert);
 		}
+		open.keySet().removeIf((key) -> undetermined.contains(key) || undetermined.contains(key.split(":")[0] + ":*"));
 		for (Alert cleared : open.values()) {
 			cleared.resolve(null, now);
 		}
@@ -232,6 +265,100 @@ public class AlertEvaluator {
 				out.put(key, new Candidate(AlertType.SERVICE_OVERDUE,
 						critical ? AlertSeverity.WARNING : AlertSeverity.INFO, asset.getName() + " service overdue",
 						top.detail() + " " + top.action(), asset.getFieldId(), asset.getId(), details));
+			}
+		}
+	}
+
+	/** Worded as a possibility: flow data shows that water moved, not why. */
+	private void waterAnomalyCandidates(Farm farm, Map<String, Candidate> out, Set<String> undetermined) {
+		ZoneId zone = farm.zone();
+		DateTimeFormatter time = DateTimeFormatter.ofPattern("HH:mm", Locale.ENGLISH);
+		for (MeterCheck meter : waterAnomalies.check(farm).meters()) {
+			if ("UNAVAILABLE".equals(meter.status()) || "NOT_REPORTING".equals(meter.status())) {
+				undetermined.add("water:" + meter.deviceId());
+			}
+			Anomaly anomaly = meter.anomaly();
+			if (anomaly == null) {
+				continue;
+			}
+			AlertSeverity severity = switch (anomaly.severity()) {
+				case "HIGH" -> AlertSeverity.CRITICAL;
+				case "MEDIUM" -> AlertSeverity.WARNING;
+				default -> AlertSeverity.INFO;
+			};
+			String where = (meter.assetName() != null) ? meter.assetName()
+					: (meter.fieldName() != null) ? meter.fieldName() : meter.meterName();
+			String flow = ("LOW".equals(anomaly.direction()) ? "Flow fell to about " : "Flow of about ")
+					+ String.format(Locale.ENGLISH, "%,.0f L/h against %,.0f L/h expected since %s.",
+							anomaly.observedLitresPerHour(), anomaly.expectedLitresPerHour(),
+							anomaly.from().atZoneSameInstant(zone).format(time));
+			Map<String, Object> details = new LinkedHashMap<>();
+			details.put("source", "ML");
+			details.put("meterId", meter.deviceId());
+			details.put("observedLitresPerHour", anomaly.observedLitresPerHour());
+			details.put("expectedLitresPerHour", anomaly.expectedLitresPerHour());
+			details.put("anomalyScore", anomaly.score());
+			details.put("direction", anomaly.direction());
+			details.put("since", anomaly.from().toInstant());
+			details.put("duringScheduledIrrigation", anomaly.duringScheduledIrrigation());
+			details.put("possibleCauses", anomaly.possibleCauses());
+			details.put("modelVersion", meter.modelVersion());
+			out.put("water:" + meter.deviceId(), new Candidate(AlertType.WATER_ANOMALY, severity,
+					"Potential water anomaly: " + where, anomaly.headline() + " " + flow, meter.fieldId(),
+					meter.assetId(), details));
+		}
+	}
+
+	/** The model's 14-day failure risk, raised only where the rules have not already flagged the pump. */
+	private void failureRiskCandidates(Farm farm, Map<String, Candidate> out, Set<String> undetermined) {
+		EquipmentRiskService.EquipmentRiskView view = equipmentRisk.assess(farm);
+		if (!view.available()) {
+			undetermined.add("asset-risk:*");
+		}
+		for (PumpRisk pump : view.pumps()) {
+			EquipmentRisk risk = pump.risk();
+			if (risk == null || out.containsKey("asset:" + pump.assetId()) || pump.assetStatus() == AssetStatus.DOWN) {
+				continue;
+			}
+			boolean critical = "CRITICAL".equals(risk.riskLevel());
+			if (!critical && !"HIGH".equals(risk.riskLevel())) {
+				continue;
+			}
+			List<Indicator> top = risk.indicators().stream().limit(2).toList();
+			String signs = top.isEmpty() ? "" : " Main signs: " + String.join(", ",
+					top.stream().map((i) -> i.label().toLowerCase(Locale.ENGLISH) + " " + i.value()).toList()) + ".";
+			Map<String, Object> details = new LinkedHashMap<>();
+			details.put("source", "ML");
+			details.put("failureProbability", risk.failureProbability());
+			details.put("horizonDays", risk.horizonDays());
+			details.put("riskLevel", risk.riskLevel());
+			details.put("indicators", top.stream().map(Indicator::label).toList());
+			details.put("recommendedAction", risk.recommendation());
+			details.put("modelVersion", risk.modelVersion());
+			out.put("asset-risk:" + pump.assetId(), new Candidate(AlertType.ASSET_FAILURE_RISK,
+					critical ? AlertSeverity.CRITICAL : AlertSeverity.WARNING,
+					pump.assetName() + ": elevated failure risk",
+					String.format(Locale.ENGLISH, "About %.0f%% chance of failure within %d days.",
+							risk.failureProbability() * 100, risk.horizonDays()) + signs + " " + risk.recommendation(),
+					null, pump.assetId(), details));
+		}
+	}
+
+	/** Devices that fed data and went quiet: the checks that depend on them are blind until they return. */
+	private void deviceCandidates(Farm farm, Map<String, Candidate> out) {
+		Instant silentBefore = clock.instant().minus(DEVICE_SILENT_AFTER);
+		for (SensorType type : SensorType.values()) {
+			for (Sensor device : devices.devices(farm, type)) {
+				if (device.getStatus() != DeviceStatus.ACTIVE || device.getLastSeenAt() == null
+						|| device.getLastSeenAt().isAfter(silentBefore)) {
+					continue;
+				}
+				Duration silent = Duration.between(device.getLastSeenAt(), clock.instant());
+				out.put("device:" + device.getId(), new Candidate(AlertType.SENSOR_FAULT, AlertSeverity.INFO,
+						device.displayName() + " is not reporting",
+						"No readings for " + ((silent.toHours() >= 48) ? HumanText.days(silent.toDays())
+								: HumanText.duration(silent.toHours() * 60)) + ". Check its power, Wi-Fi and wiring.",
+						device.getFieldId(), device.getAssetId(), Map.of("deviceId", device.getId())));
 			}
 		}
 	}

@@ -97,7 +97,7 @@ class WeatherServiceTest {
 			providerCalls.incrementAndGet();
 			List<WeatherDay> days = new ArrayList<>();
 			for (LocalDate day = today.minusDays(pastDays); day.isBefore(today.plusDays(forecastDays)); day = day.plusDays(1)) {
-				days.add(new WeatherDay(day, 5.5, 0.0, 10, 29.0, 14.0, WeatherSource.OPEN_METEO, !day.isBefore(today)));
+				days.add(new WeatherDay(day, 5.5, 0.0, 10, 29.0, 14.0, 11.0, WeatherSource.OPEN_METEO, !day.isBefore(today)));
 			}
 			return days;
 		};
