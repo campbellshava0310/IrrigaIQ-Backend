@@ -1,0 +1,25 @@
+# Integration tests: datasource comes from Testcontainers (@ServiceConnection).
+irrigaiq:
+  security:
+    jwt:
+      allow-ephemeral-keys: true
+    refresh-token:
+      reuse-leeway: 0s # any replay of a rotated token counts as theft
+    lockout:
+      max-failed-attempts: 3
+  weather:
+    provider: CLIMATOLOGY # deterministic and offline
+  alerts:
+    initial-delay: PT1H # tests trigger evaluation explicitly
+    evaluation-interval: PT1H
+  ml:
+    enabled: false # the rules and water balance must stand on their own
+  knowledge:
+    index-on-startup: false
+  bootstrap-admin:
+    email: admin@irrigaiq.test
+    password: Test-Admin-Password-1
+
+logging:
+  level:
+    com.irrigaiq: INFO

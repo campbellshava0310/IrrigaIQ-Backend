@@ -1,0 +1,109 @@
+# Local platform services for IrrigaIQ.
+#
+#   docker compose up -d                 # PostgreSQL only (run the API from your IDE / ./mvnw)
+#   docker compose --profile ml up -d    # + the ML service (needs ../IrrigaIQ-ML checked out)
+#   docker compose --profile ai up -d    # + Ollama, a local LLM for the assistant; then once:
+#       docker compose exec ollama ollama pull llama3.1:8b
+#   docker compose --profile app up -d   # PostgreSQL + ML service + the API in containers
+#
+# Values come from .env (copy .env.example). Data persists in the `postgres-data` volume;
+# `docker compose down -v` wipes it.
+name: irrigaiq
+
+services:
+  postgres:
+    # pgvector build of PostgreSQL 18: the assistant's knowledge base stores embeddings.
+    image: pgvector/pgvector:pg18
+    container_name: irrigaiq-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-irrigaiq}
+      POSTGRES_USER: ${POSTGRES_USER:-irrigaiq}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (see .env.example)}
+      TZ: UTC
+      PGTZ: UTC
+    ports:
+      # Loopback only: the database is never reachable from the LAN.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # PostgreSQL 18+ images keep versioned data under /var/lib/postgresql.
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  # Local language model for the farm assistant (ASSISTANT_PROVIDER=OLLAMA). On macOS, Docker has
+  # no GPU access, so models run on the CPU; models persist in the ollama-models volume.
+  ollama:
+    profiles: ["ai", "app"]
+    image: ollama/ollama:0.35.0
+    container_name: irrigaiq-ollama
+    restart: unless-stopped
+    environment:
+      OLLAMA_KEEP_ALIVE: 30m # keep the model in memory between questions
+    volumes:
+      - ollama-models:/root/.ollama
+    ports:
+      # Loopback only: the backend is its only client.
+      - "127.0.0.1:${OLLAMA_PORT:-11434}:11434"
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  ml:
+    profiles: ["ml", "app"]
+    build:
+      context: ../IrrigaIQ-ML
+    image: irrigaiq/ml:local
+    container_name: irrigaiq-ml
+    restart: unless-stopped
+    environment:
+      IRRIGAIQ_ML_TOKEN: ${IRRIGAIQ_ML_TOKEN:-}
+    ports:
+      # Loopback only: the backend is the ML service's only client.
+      - "127.0.0.1:${ML_PORT:-8090}:8090"
+
+  backend:
+    profiles: ["app"]
+    build:
+      context: .
+    image: irrigaiq/backend:local
+    container_name: irrigaiq-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-irrigaiq}
+      POSTGRES_USER: ${POSTGRES_USER:-irrigaiq}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173,http://localhost:8081}
+      IRRIGAIQ_ML_URL: http://ml:8090
+      IRRIGAIQ_ML_TOKEN: ${IRRIGAIQ_ML_TOKEN:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ASSISTANT_PROVIDER: ${ASSISTANT_PROVIDER:-CLAUDE}
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.1:8b}
+    ports:
+      # All interfaces so phones on the same Wi-Fi can reach the API during development.
+      - "${SERVER_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+volumes:
+  postgres-data:
+  ollama-models:

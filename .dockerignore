@@ -1,0 +1,14 @@
+target/
+.idea/
+.vscode/
+.git/
+.github/
+.run/
+*.iml
+.env
+.env.*
+secrets/
+*.pem
+*.md
+compose.yaml
+Dockerfile
